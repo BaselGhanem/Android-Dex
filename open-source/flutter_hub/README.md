@@ -2,7 +2,7 @@
 
 An **independent, MIT-licensed Flutter project** for managing your Android phone from Windows. This is **not** Android DEX, and does not contain its closed-source application code.
 
-## Features in v0.3 source
+## Features in v0.4 source
 
 - Dark premium interface using teal #099999
 - Discover and select authorized USB/ADB devices
@@ -16,9 +16,51 @@ An **independent, MIT-licensed Flutter project** for managing your Android phone
 - Home, Back, Recents, Power button commands
 - Connect to already configured ADB over Wi-Fi TCP endpoints
 
+## Your personal desktop (v0.4)
+
+The existing dark/teal design is unchanged. Open **My Desktop** from the sidebar (or its taskbar icon). Copy is tailored to three independent work modes:
+
+- **Sales Desk:** "From raw numbers to decisions that matter."
+- **X Academy:** "Learn. Analyse. Lead." — training studio
+- **Build Lab:** development and systems
+
+Each workspace has its own:
+- Pinned apps in the **App Drawer**
+- Saved Android app window positions, including a second monitor
+- A Restore Layout command
+- A Save Positions command (reads the current Windows window rectangles)
+
+At the bottom of the main hub, a **taskbar** lists active virtual-display windows and lets you focus them. The workspace lets you close windows, arrange them left/right/full/center on a selected screen, and automatically distribute running windows across all detected Windows monitors.
+
+Your preferences are stored only on your own PC in:
+
+    %APPDATA%\BaselDesktopHub\workspaces.json
+
+They are **not** synced to the cloud and do not store your Android app content.
+
+### Two-screen workflow
+
+1. Connect your Samsung phone using USB debugging.
+2. Open **My Desktop** and click **Load apps** in the App Drawer.
+3. Pin the apps you actually use in Sales Desk, X Academy or Build Lab.
+4. Launch them in virtual-display windows.
+5. Use **Auto arrange across screens**, or pick a target monitor and Left/Right/Fill/Center for each running window.
+6. Move any scrcpy window manually if needed and click **Save positions**.
+7. Later choose the same workspace and select **Restore layout**.
+
+Monitor locations are discovered from Windows, including negative coordinates for screens placed to the left of the main display. If a monitor is disconnected, saved positions that are off-screen fall back to a centered window on a connected screen.
+
+Windows move/focus/read operations use local PowerShell and Win32 APIs; no external services and no additional Flutter plugins. Windows desktop scaling and device compatibility must be tested on your actual dual-monitor setup. Windows is the only supported OS for native window management in v0.4.
+
+### Status and limitations
+
+This project **launches** native scrcpy windows; it does not embed their rendering inside Flutter or replace the Windows shell. The taskbar is an in-app control bar, not a replacement for the system taskbar. App Drawer displays package-derived labels and symbolic icons, not extracted official Android application icons. Multiple sessions of the same package do not guarantee Android will create independent instances.
+
+scrcpy versions supporting \`--flex-display\` and \`--no-vd-destroy-content\` will use those options automatically. Where available, the latter avoids destroying Android activity content just because the virtual display closes, but individual apps may still restart due to Android lifecycle handling.
+
 ## Not yet implemented
 
-App-specific audio routing, game controls, Android notifications, automatic wireless pairing, automatic reconnection and installer packaging. Virtual display compatibility depends on Android firmware and each app.
+App-specific audio routing, game controls, Android notifications, automatic wireless pairing, automatic reconnection, extraction of real APK launcher icons, and installer packaging. Virtual display compatibility depends on Android firmware and each app.
 
 ## Windows installation
 
@@ -32,6 +74,7 @@ App-specific audio routing, game controls, Android notifications, automatic wire
 
     flutter create --platforms=windows --project-name basel_desktop_hub .
     flutter pub get
+    flutter test
     flutter run -d windows
 
 To generate a Windows release build:
@@ -61,7 +104,11 @@ Enable Developer Options and USB Debugging on the phone. Connect a USB cable and
 
 - lib/main.dart: responsive desktop dashboard, app list and device controls
 - lib/android_bridge.dart: Android Debug Bridge and screen mirroring integration
-- lib/virtual_window_manager.dart: virtual display sessions and lifecycle
+- lib/virtual_window_manager.dart: virtual display sessions, window placement and lifecycle
+- lib/desktop_layout.dart: Windows monitor geometry, native move/focus/read operations
+- lib/workspace_store.dart: local per-workspace favorites and saved layouts
+- lib/my_desktop.dart: personalized workspaces, in-app taskbar, App Drawer and dual-screen controls
+- test/desktop_layout_test.dart: unit tests for placement arithmetic and negative screen coordinates
 - pubspec.yaml: Flutter project configuration
 
 ## Security and licensing
