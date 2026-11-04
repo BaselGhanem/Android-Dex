@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'android_bridge.dart';
 import 'virtual_window_manager.dart';
+import 'my_desktop.dart';
 
 
 void main() => runApp(const BaselDesktopHub());
@@ -96,10 +97,13 @@ class _DashboardState extends State<Dashboard> {
     });
   });
 
-  Future<void> loadApps() => execute(() async {
+  Future<void> loadApps({bool switchToApplications = true}) => execute(() async {
     if (selected == null) throw StateError('Connect a device first');
     final installed = await bridge.packages(selected!);
-    if (mounted) setState(() { apps = installed; tab = 1; });
+    if (mounted) setState(() {
+      apps = installed;
+      if (switchToApplications) tab = 1;
+    });
   }, success: 'Application list refreshed');
 
   Future<void> launch(String pkg) => execute(() async {
@@ -107,13 +111,13 @@ class _DashboardState extends State<Dashboard> {
     await bridge.launch(selected!, pkg);
   }, success: 'Launch requested: ' + pkg);
 
-  Future<void> openIndependent(String pkg) => execute(() async {
+  Future<void> openIndependent(String pkg, {bool switchToWindows = true}) => execute(() async {
     if (selected == null) throw StateError('No selected device');
     final window = await virtualWindows.open(serial: selected!, package: pkg);
     if (mounted) setState(() {
       message = 'Virtual display started for ' + window.package +
           ' (window ' + window.id.toString() + ')';
-      tab = 3;
+      if (switchToWindows) tab = 3;
     });
   });
 
@@ -154,12 +158,12 @@ class _DashboardState extends State<Dashboard> {
   );
 
   Widget overview() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    title('Your Android workspace', 'Work with your mobile apps directly on Windows'),
+    title("Basel's Workspace", 'Sales insights. X Academy. Building what comes next.'),
     card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Row(children: [
         Icon(Icons.smartphone, color: accent, size: 27),
         SizedBox(width: 10),
-        Text('Device connection', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+        Text('My Galaxy connection', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
       ]),
       const SizedBox(height: 23),
       Row(children: [
@@ -181,7 +185,7 @@ class _DashboardState extends State<Dashboard> {
       const SizedBox(height: 18),
       Wrap(spacing: 10, runSpacing: 10, children: [
         button('Mirror device', Icons.cast, mirror),
-        button('Installed apps', Icons.apps, loadApps, secondary: true),
+        button('My apps', Icons.apps, () => loadApps(), secondary: true),
         button('Screenshot', Icons.camera_alt_outlined, screenshot, secondary: true),
       ]),
     ])),
@@ -200,13 +204,13 @@ class _DashboardState extends State<Dashboard> {
     final shown = apps.where((p) =>
       p.toLowerCase().contains(query.text.toLowerCase().trim())).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      title('Applications', 'Open user-installed Android apps from Windows'),
+      title('My Android apps', 'Launch the tools that keep your day moving'),
       Row(children: [
         Expanded(child: TextField(controller: query,
             decoration: const InputDecoration(
               prefixIcon: Icon(Icons.search), hintText: 'Search Android package'))),
         const SizedBox(width: 12),
-        button('Load Apps', Icons.refresh, loadApps, secondary: true),
+        button('Load Apps', Icons.refresh, () => loadApps(), secondary: true),
       ]),
       const SizedBox(height: 15),
       Text(shown.length.toString() + ' applications',
@@ -237,7 +241,7 @@ class _DashboardState extends State<Dashboard> {
   }
 
   Widget windowList() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    title('App windows', 'Independent Android virtual displays managed from Windows'),
+    title('My app windows', 'Every app, exactly where you need it'),
     Row(children: [
       Text(virtualWindows.windows.where((w) => w.status == WindowStatus.running).length.toString() +
         ' running', style: const TextStyle(color: muted)),
@@ -276,7 +280,7 @@ class _DashboardState extends State<Dashboard> {
   ]);
 
   Widget tools() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    title('Device tools', 'ADB utilities for your authorized Android phone'),
+    title('My phone controls', 'Your Galaxy, managed from the desktop'),
     card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Text('Connect an existing Wi-Fi ADB endpoint',
           style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
@@ -356,16 +360,31 @@ class _DashboardState extends State<Dashboard> {
           nav(1, Icons.apps, 'Applications'),
           nav(2, Icons.tune, 'Device Tools'),
           nav(3, Icons.web_asset_outlined, 'App Windows'),
+          nav(4, Icons.desktop_windows_outlined, 'My Desktop'),
           const Spacer(),
-          const Text('OPEN SOURCE  ·  v0.3',
+          const Text('OPEN SOURCE  ·  v0.4',
             style: TextStyle(color: muted, fontSize: 11)),
         ])),
       Expanded(child: Padding(
         padding: const EdgeInsets.fromLTRB(30, 30, 30, 22),
         child: Column(children: [
-          Expanded(child: tab == 1 ? appList() : tab == 3 ? windowList() :
+          Expanded(child: tab == 1 ? appList() :
+            tab == 3 ? windowList() :
+            tab == 4 ? MyDesktop(
+              manager: virtualWindows,
+              serial: selected,
+              packages: apps,
+              onOpenApp: (pkg) => openIndependent(pkg, switchToWindows: false),
+              onLoadApps: () => loadApps(switchToApplications: false),
+            ) :
             SingleChildScrollView(child: tab == 0 ? overview() : tools())),
           const SizedBox(height: 13),
+          HubTaskbar(
+            manager: virtualWindows,
+            onNotice: (text) { if (mounted) setState(() => message = text); },
+            onWorkspace: () => setState(() => tab = 4),
+          ),
+          const SizedBox(height: 10),
           Row(children: [
             if (busy) const Padding(padding: EdgeInsets.only(right: 10),
               child: SizedBox(width: 14, height: 14,
