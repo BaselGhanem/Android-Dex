@@ -24,6 +24,18 @@ String appName(String package) {
   return name.isEmpty ? package : name[0].toUpperCase() + name.substring(1);
 }
 
+IconData appSymbol(String package) {
+  final key = package.toLowerCase();
+  if (key.contains('whatsapp') || key.contains('telegram') ||
+      key.contains('messenger')) return Icons.chat_bubble_outline;
+  if (key.contains('excel') || key.contains('sheets')) return Icons.table_chart_outlined;
+  if (key.contains('teams') || key.contains('zoom')) return Icons.video_call_outlined;
+  if (key.contains('gmail') || key.contains('mail')) return Icons.mail_outline;
+  if (key.contains('youtube') || key.contains('spotify')) return Icons.play_circle_outline;
+  if (key.contains('game') || key.contains('steam')) return Icons.sports_esports_outlined;
+  return Icons.android;
+}
+
 class MyDesktop extends StatefulWidget {
   const MyDesktop({super.key, required this.manager, required this.serial,
     required this.packages, required this.onOpenApp, required this.onLoadApps});
@@ -210,7 +222,7 @@ class _MyDesktopState extends State<MyDesktop> {
         for (final package in pinned)
           ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.android, color: _teal),
+            leading: Icon(appSymbol(package), color: _teal),
             title: Text(appName(package)),
             subtitle: Text(package, style: const TextStyle(
               fontSize: 11, color: _muted)),
@@ -332,7 +344,7 @@ class _MyDesktopState extends State<MyDesktop> {
                 final pinned = store.isPinned(store.activeId, package);
                 return ListTile(
                   dense: true,
-                  leading: const Icon(Icons.android, color: _teal),
+                  leading: Icon(appSymbol(package), color: _teal),
                   title: Text(appName(package)),
                   subtitle: Text(package, maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -398,7 +410,7 @@ class HubTaskbar extends StatelessWidget {
                       try { await manager.focus(win); }
                       catch (e) { onNotice('Cannot focus window: ' + e.toString()); }
                     },
-                    icon: const Icon(Icons.android, size: 16),
+                    icon: Icon(appSymbol(win.package), size: 16),
                     label: Text(appName(win.package))));
               })),
         Text(windows.length.toString() + ' windows',
