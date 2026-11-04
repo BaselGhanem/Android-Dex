@@ -74,6 +74,7 @@ class AndroidBridge {
       '/sdcard/Download/' + file.uri.pathSegments.last]);
   }
 
-  Future<void> key(String serial, int code) async =>
-      adb(['-s', serial, 'shell', 'input', 'keyevent', code.toString()]);
+  Future<void> key(String serial, int code) async {
+    await adb(['-s', serial, 'shell', 'input', 'keyevent', code.toString()]);
+  }
 }
