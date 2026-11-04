@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'android_bridge.dart';
 import 'virtual_window_manager.dart';
@@ -43,6 +44,11 @@ class _DashboardState extends State<Dashboard> {
   final query = TextEditingController();
   final wifi = TextEditingController();
   final file = TextEditingController();
+  final pairAddress = TextEditingController();
+  final pairCode = TextEditingController();
+  Timer? connectionTimer;
+  bool checkingConnection = false;
+  String? wifiEndpoint;
   List<String> devices = [];
   List<String> apps = [];
   String? selected;
@@ -57,10 +63,14 @@ class _DashboardState extends State<Dashboard> {
     query.addListener(() { if (mounted) setState(() {}); });
     virtualWindows.changes.listen((_) { if (mounted) setState(() {}); });
     refresh();
+    connectionTimer = Timer.periodic(const Duration(seconds: 15), (_) => monitorConnection());
   }
 
   @override
   void dispose() {
+    connectionTimer?.cancel();
+    pairAddress.dispose();
+    pairCode.dispose();
     query.dispose();
     wifi.dispose();
     file.dispose();
@@ -96,6 +106,35 @@ class _DashboardState extends State<Dashboard> {
       message = serial == null ? 'No authorized device detected' : 'Device connected: ' + serial;
     });
   });
+
+  Future<void> monitorConnection() async {
+    if (busy || checkingConnection) return;
+    checkingConnection = true;
+    try {
+      var found = await bridge.devices();
+      final endpoint = wifiEndpoint;
+      if (endpoint != null && !found.contains(endpoint)) {
+        try { await bridge.connectWifi(endpoint); } catch (_) {}
+        found = await bridge.devices();
+      }
+      if (!mounted) return;
+      setState(() {
+        devices = found;
+        if (selected != null && !found.contains(selected)) {
+          apps = [];
+          message = 'Your Galaxy disconnected. Reconnect USB or check wireless debugging.';
+          selected = null;
+          battery = '?';
+        }
+        if (selected == null && found.isNotEmpty) {
+          selected = endpoint != null && found.contains(endpoint) ? endpoint : found.first;
+          message = 'Your Galaxy is connected again: $selected';
+        }
+      });
+    } catch (_) {
+      if (mounted) setState(() => message = 'Unable to check ADB connection.');
+    } finally { checkingConnection = false; }
+  }
 
   Future<void> loadApps({bool switchToApplications = true}) => execute(() async {
     if (selected == null) throw StateError('Connect a device first');
@@ -288,6 +327,24 @@ class _DashboardState extends State<Dashboard> {
   Widget tools() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
     title('My phone controls', 'Your Galaxy, managed from the desktop'),
     card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text("Pair Basel's Galaxy", style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8),
+      const Text('On your phone open Developer options → Wireless debugging → Pair device with pairing code.',
+        style: TextStyle(color: muted)),
+      const SizedBox(height: 13),
+      TextField(controller: pairAddress,
+        decoration: const InputDecoration(labelText: 'Pairing IP address and port')),
+      const SizedBox(height: 10),
+      TextField(controller: pairCode, obscureText: true, maxLength: 6,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(labelText: 'Six-digit pairing code')),
+      button('Pair Galaxy', Icons.link, () => execute(() async {
+        await bridge.pairWifi(pairAddress.text.trim(), pairCode.text.trim());
+        pairCode.clear();
+      }, success: 'Paired. Connect using the separate IP address and port shown on the Wireless debugging screen.')),
+    ])),
+    const SizedBox(height: 16),
+    card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const Text('Connect an existing Wi-Fi ADB endpoint',
           style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
       const SizedBox(height: 13),
@@ -296,16 +353,18 @@ class _DashboardState extends State<Dashboard> {
           decoration: const InputDecoration(hintText: '192.168.1.10:5555'))),
         const SizedBox(width: 12),
         button('Connect', Icons.wifi, () => execute(() async {
-          await bridge.connectWifi(wifi.text.trim());
+          final endpoint = wifi.text.trim();
+          await bridge.connectWifi(endpoint);
+          wifiEndpoint = endpoint;
           final found = await bridge.devices();
           if (mounted) setState(() {
             devices = found;
-            selected = found.isEmpty ? null : found.last;
+            selected = found.contains(endpoint) ? endpoint : (found.isEmpty ? null : found.last);
           });
         }, success: 'ADB connection requested'), secondary: true),
       ]),
       const SizedBox(height: 12),
-      const Text('Wireless Debugging pairing is not included in this version.',
+      const Text('Connection is monitored while Basel Hub remains open. Your phone may show a different pairing port.',
         style: TextStyle(color: muted)),
     ])),
     const SizedBox(height: 16),
