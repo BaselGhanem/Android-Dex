@@ -48,7 +48,7 @@ class _DashboardState extends State<Dashboard> {
   String? selected;
   String battery = '?';
   String message = 'Connect an Android device with USB debugging enabled';
-  int tab = 0;
+  int tab = 4; // Open Basel's personalized desktop first.
   bool busy = false;
 
   @override
