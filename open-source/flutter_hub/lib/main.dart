@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'android_bridge.dart';
+import 'virtual_window_manager.dart';
+
 
 void main() => runApp(const BaselDesktopHub());
 
@@ -36,6 +38,7 @@ class Dashboard extends StatefulWidget {
 
 class _DashboardState extends State<Dashboard> {
   final bridge = AndroidBridge();
+  final virtualWindows = VirtualWindowManager();
   final query = TextEditingController();
   final wifi = TextEditingController();
   final file = TextEditingController();
@@ -50,7 +53,8 @@ class _DashboardState extends State<Dashboard> {
   @override
   void initState() {
     super.initState();
-    query.addListener(() => setState(() {}));
+    query.addListener(() { if (mounted) setState(() {}); });
+    virtualWindows.changes.listen((_) { if (mounted) setState(() {}); });
     refresh();
   }
 
@@ -59,6 +63,7 @@ class _DashboardState extends State<Dashboard> {
     query.dispose();
     wifi.dispose();
     file.dispose();
+    virtualWindows.dispose();
     super.dispose();
   }
 
@@ -97,12 +102,20 @@ class _DashboardState extends State<Dashboard> {
     if (mounted) setState(() { apps = installed; tab = 1; });
   }, success: 'Application list refreshed');
 
-  Future<void> launch(String pkg, {bool mirror = false}) => execute(() async {
+  Future<void> launch(String pkg) => execute(() async {
     if (selected == null) throw StateError('No selected device');
     await bridge.launch(selected!, pkg);
-    if (mirror) await bridge.mirror(selected!);
-  }, success: mirror ? 'App launched; whole-device mirror opened'
-      : 'Launch requested: ' + pkg);
+  }, success: 'Launch requested: ' + pkg);
+
+  Future<void> openIndependent(String pkg) => execute(() async {
+    if (selected == null) throw StateError('No selected device');
+    final window = await virtualWindows.open(serial: selected!, package: pkg);
+    if (mounted) setState(() {
+      message = 'Virtual display started for ' + window.package +
+          ' (window ' + window.id.toString() + ')';
+      tab = 3;
+    });
+  });
 
   Future<void> mirror() => execute(() async {
     if (selected == null) throw StateError('No selected device');
@@ -178,7 +191,7 @@ class _DashboardState extends State<Dashboard> {
       SizedBox(height: 10),
       Text('USB or Wi-Fi ADB. Screen mirroring is handled by scrcpy.'),
       SizedBox(height: 8),
-      Text('App-specific virtual displays and per-app audio are not implemented yet.',
+      Text('Independent virtual-display windows use scrcpy; support depends on Android and the app.',
           style: TextStyle(color: muted)),
     ])),
   ]);
@@ -208,20 +221,59 @@ class _DashboardState extends State<Dashboard> {
             leading: const Icon(Icons.android, color: accent),
             title: Text(pkg, maxLines: 1, overflow: TextOverflow.ellipsis),
             trailing: Wrap(spacing: 6, children: [
-              IconButton(tooltip: 'Launch', onPressed: busy ? null : () => launch(pkg),
+              IconButton(tooltip: 'Launch on phone', onPressed: busy ? null : () => launch(pkg),
                   icon: const Icon(Icons.play_arrow)),
-              IconButton(tooltip: 'Launch and mirror whole device',
-                  onPressed: busy ? null : () => launch(pkg, mirror: true),
+              IconButton(tooltip: 'Open independent app window',
+                  onPressed: busy ? null : () => openIndependent(pkg),
                   icon: const Icon(Icons.open_in_new)),
             ]),
           );
         },
       ))),
       const Padding(padding: EdgeInsets.only(top: 8),
-          child: Text('Current mirror windows display the whole phone, not independent apps.',
+          child: Text('Independent app windows require scrcpy virtual display support. Some apps/devices may reject them.',
               style: TextStyle(color: muted, fontSize: 12))),
     ]);
   }
+
+  Widget windowList() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    title('App windows', 'Independent Android virtual displays managed from Windows'),
+    Row(children: [
+      Text(virtualWindows.windows.where((w) => w.status == WindowStatus.running).length.toString() +
+        ' running', style: const TextStyle(color: muted)),
+      const Spacer(),
+      button('Clear finished', Icons.cleaning_services_outlined,
+        virtualWindows.clearFinished, secondary: true),
+    ]),
+    const SizedBox(height: 15),
+    Expanded(child: card(virtualWindows.windows.isEmpty
+      ? const Center(child: Text('Open an app using the new window button in Applications.',
+          style: TextStyle(color: muted)))
+      : ListView.separated(
+          itemCount: virtualWindows.windows.length,
+          separatorBuilder: (_, __) => const Divider(color: Color(0xFF284348)),
+          itemBuilder: (context, index) {
+            final w = virtualWindows.windows[index];
+            final active = w.status == WindowStatus.running || w.status == WindowStatus.starting;
+            return ListTile(
+              leading: Icon(Icons.web_asset_outlined,
+                color: active ? accent : muted),
+              title: Text(w.package),
+              subtitle: Text(w.status.name +
+                  (w.diagnostic.isEmpty ? '' : ' - ' + w.diagnostic),
+                  maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: muted)),
+              trailing: IconButton(
+                tooltip: 'Close this virtual display',
+                onPressed: active ? () => virtualWindows.close(w.id) : null,
+                icon: const Icon(Icons.close)),
+            );
+          },
+        ))),
+    const SizedBox(height: 12),
+    const Text('Each app has its own scrcpy virtual display. Close an app window to end that display.',
+        style: TextStyle(color: muted, fontSize: 12)),
+  ]);
 
   Widget tools() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
     title('Device tools', 'ADB utilities for your authorized Android phone'),
@@ -303,14 +355,15 @@ class _DashboardState extends State<Dashboard> {
           nav(0, Icons.dashboard_outlined, 'Overview'),
           nav(1, Icons.apps, 'Applications'),
           nav(2, Icons.tune, 'Device Tools'),
+          nav(3, Icons.web_asset_outlined, 'App Windows'),
           const Spacer(),
-          const Text('OPEN SOURCE  ·  v0.2',
+          const Text('OPEN SOURCE  ·  v0.3',
             style: TextStyle(color: muted, fontSize: 11)),
         ])),
       Expanded(child: Padding(
         padding: const EdgeInsets.fromLTRB(30, 30, 30, 22),
         child: Column(children: [
-          Expanded(child: tab == 1 ? appList() :
+          Expanded(child: tab == 1 ? appList() : tab == 3 ? windowList() :
             SingleChildScrollView(child: tab == 0 ? overview() : tools())),
           const SizedBox(height: 13),
           Row(children: [
