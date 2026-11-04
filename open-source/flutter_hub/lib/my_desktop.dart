@@ -364,7 +364,6 @@ class _MyDesktopState extends State<MyDesktop> {
                   ]),
                 );
               })),
-        ),
       ])),
       const SizedBox(height: 15),
       if (busy) const LinearProgressIndicator(minHeight: 2),
