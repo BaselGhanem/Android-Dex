@@ -1,4 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'gaming_panel.dart';
+import 'companion_panel.dart';
 import 'package:flutter/material.dart';
 import 'android_bridge.dart';
 import 'virtual_window_manager.dart';
@@ -49,6 +53,7 @@ class _DashboardState extends State<Dashboard> {
   Timer? connectionTimer;
   bool checkingConnection = false;
   String? wifiEndpoint;
+  String? lastDevice;
   List<String> devices = [];
   List<String> apps = [];
   String? selected;
@@ -62,7 +67,7 @@ class _DashboardState extends State<Dashboard> {
     super.initState();
     query.addListener(() { if (mounted) setState(() {}); });
     virtualWindows.changes.listen((_) { if (mounted) setState(() {}); });
-    refresh();
+    restoreConnection();
     connectionTimer = Timer.periodic(const Duration(seconds: 15), (_) => monitorConnection());
   }
 
@@ -102,10 +107,43 @@ class _DashboardState extends State<Dashboard> {
       devices = found;
       if (selected != serial) apps = [];
       selected = serial;
+      if (serial != null) lastDevice = serial;
       battery = level;
       message = serial == null ? 'No authorized device detected' : 'Device connected: ' + serial;
     });
   });
+
+  Future<File> connectionSettings() async {
+    final base = Platform.environment['APPDATA'] ?? Platform.environment['USERPROFILE'];
+    if (base == null) throw StateError('Windows profile location unavailable.');
+    final dir = Directory('$base\\BaselDesktopHub');
+    await dir.create(recursive: true);
+    return File('${dir.path}\\connection.json');
+  }
+
+  Future<void> restoreConnection() async {
+    try {
+      final file = await connectionSettings();
+      if (await file.exists()) {
+        final data = jsonDecode(await file.readAsString());
+        if (data is Map && data['endpoint'] is String) {
+          bridge.validateAddress(data['endpoint'] as String);
+          wifiEndpoint = data['endpoint'] as String;
+          wifi.text = wifiEndpoint!;
+        }
+      }
+    } catch (e) {
+      if (mounted) setState(() => message = 'Saved connection could not be read: $e');
+    }
+    await refresh();
+    lastDevice ??= wifiEndpoint;
+    await monitorConnection();
+  }
+
+  Future<void> saveConnection(String endpoint) async {
+    final file = await connectionSettings();
+    await file.writeAsString(jsonEncode({'endpoint': endpoint}), flush: true);
+  }
 
   Future<void> monitorConnection() async {
     if (busy || checkingConnection) return;
@@ -121,13 +159,14 @@ class _DashboardState extends State<Dashboard> {
       setState(() {
         devices = found;
         if (selected != null && !found.contains(selected)) {
+          lastDevice = selected;
           apps = [];
           message = 'Your Galaxy disconnected. Reconnect USB or check wireless debugging.';
           selected = null;
           battery = '?';
         }
-        if (selected == null && found.isNotEmpty) {
-          selected = endpoint != null && found.contains(endpoint) ? endpoint : found.first;
+        if (selected == null && lastDevice != null && found.contains(lastDevice)) {
+          selected = lastDevice;
           message = 'Your Galaxy is connected again: $selected';
         }
       });
@@ -219,7 +258,7 @@ class _DashboardState extends State<Dashboard> {
           decoration: const InputDecoration(labelText: 'Authorized device'),
           items: devices.map((d) => DropdownMenuItem(
             value: d, child: Text(d, overflow: TextOverflow.ellipsis))).toList(),
-          onChanged: (value) => setState(() { selected = value; apps = []; }),
+          onChanged: (value) => setState(() { selected = value; lastDevice = value; apps = []; }),
         )),
         const SizedBox(width: 12),
         button('Refresh', Icons.refresh, refresh, secondary: true),
@@ -356,15 +395,17 @@ class _DashboardState extends State<Dashboard> {
           final endpoint = wifi.text.trim();
           await bridge.connectWifi(endpoint);
           wifiEndpoint = endpoint;
+          await saveConnection(endpoint);
           final found = await bridge.devices();
           if (mounted) setState(() {
             devices = found;
-            selected = found.contains(endpoint) ? endpoint : (found.isEmpty ? null : found.last);
+            selected = found.contains(endpoint) ? endpoint : null;
+            if (selected != null) lastDevice = selected;
           });
         }, success: 'ADB connection requested'), secondary: true),
       ]),
       const SizedBox(height: 12),
-      const Text('Connection is monitored while Basel Hub remains open. Your phone may show a different pairing port.',
+      const Text('The last endpoint is saved for reconnecting. Your phone may show a different pairing port.',
         style: TextStyle(color: muted)),
     ])),
     const SizedBox(height: 16),
@@ -426,6 +467,8 @@ class _DashboardState extends State<Dashboard> {
           nav(2, Icons.tune, 'Device Tools'),
           nav(3, Icons.web_asset_outlined, 'App Windows'),
           nav(4, Icons.desktop_windows_outlined, 'My Desktop'),
+          nav(5, Icons.sports_esports_outlined, 'Game Desk'),
+          nav(6, Icons.phone_android_outlined, 'My Galaxy'),
           const Spacer(),
           const Text('OPEN SOURCE  ·  v0.4',
             style: TextStyle(color: muted, fontSize: 11)),
@@ -433,7 +476,9 @@ class _DashboardState extends State<Dashboard> {
       Expanded(child: Padding(
         padding: const EdgeInsets.fromLTRB(30, 30, 30, 22),
         child: Column(children: [
-          Expanded(child: tab == 1 ? appList() :
+          Expanded(child: tab == 6 ? CompanionPanel(bridge: bridge, serial: selected) :
+            tab == 5 ? GamingPanel(bridge: bridge, serial: selected) :
+            tab == 1 ? appList() :
             tab == 3 ? windowList() :
             tab == 4 ? MyDesktop(
               manager: virtualWindows,
