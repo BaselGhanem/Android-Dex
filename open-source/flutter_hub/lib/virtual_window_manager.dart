@@ -27,14 +27,14 @@ class VirtualWindowManager {
     if (!_disposed) _changes.add(null);
   }
 
-  Future<bool> supported() async {
+  Future<String> capabilities() async {
     final result = await Process.run('scrcpy', ['--help'])
         .timeout(const Duration(seconds: 15));
     if (result.exitCode != 0) {
       throw StateError('Unable to query scrcpy --help');
     }
     final help = result.stdout.toString() + result.stderr.toString();
-    return help.contains('--new-display') && help.contains('--start-app');
+    return help;
   }
 
   Future<AppWindow> open({
@@ -50,8 +50,9 @@ class VirtualWindowManager {
     if (width < 480 || height < 320 || width > 3840 || height > 2160) {
       throw const FormatException('Invalid virtual display dimensions');
     }
-    if (!await supported()) {
-      throw StateError('Update scrcpy to a version supporting --new-display and --start-app.');
+    final help = await capabilities();
+    if (!help.contains('--new-display') || !help.contains('--start-app')) {
+      throw StateError('Update scrcpy: virtual displays and app launch options are required.');
     }
     final window = AppWindow(_nextId++, serial, package);
     window.placement = placement;
@@ -62,6 +63,8 @@ class VirtualWindowManager {
       '--new-display=' + width.toString() + 'x' + height.toString(),
       '--start-app=' + package,
       '--window-title=Basel Hub | ' + package,
+      if (help.contains('--flex-display')) '--flex-display',
+      if (help.contains('--no-vd-destroy-content')) '--no-vd-destroy-content',
       if (placement != null) ...[
         '--window-x=' + placement.x.toString(),
         '--window-y=' + placement.y.toString(),
