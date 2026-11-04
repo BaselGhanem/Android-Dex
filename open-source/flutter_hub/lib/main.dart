@@ -121,6 +121,12 @@ class _DashboardState extends State<Dashboard> {
     });
   });
 
+  Future<void> openFromDesktop(String pkg) async {
+    final device = selected;
+    if (device == null) throw StateError('Connect your phone first');
+    await virtualWindows.open(serial: device, package: pkg);
+  }
+
   Future<void> mirror() => execute(() async {
     if (selected == null) throw StateError('No selected device');
     await bridge.mirror(selected!);
@@ -374,7 +380,7 @@ class _DashboardState extends State<Dashboard> {
               manager: virtualWindows,
               serial: selected,
               packages: apps,
-              onOpenApp: (pkg) => openIndependent(pkg, switchToWindows: false),
+              onOpenApp: openFromDesktop,
               onLoadApps: () => loadApps(switchToApplications: false),
             ) :
             SingleChildScrollView(child: tab == 0 ? overview() : tools())),
