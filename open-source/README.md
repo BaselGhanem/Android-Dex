@@ -1,56 +1,28 @@
-# Basel Desktop Hub — independent open-source MVP
+# Basel Desktop Hub — open-source project
 
-An independently developed desktop controller for Android devices on Windows, inspired by the general concept of integrating Android and desktop workflows. **This is not Android DEX, is not affiliated with its author, and contains no original Android DEX application code.**
+This directory contains **original, independently written source code** for managing Android devices from a Windows desktop. It is not a redistribution, copy, or modification of proprietary Android DEX software.
 
-## Current functionality
-- Detect USB- or Wi-Fi-connected authorized Android devices
-- Select an attached device
-- Connect to an already configured ADB-over-TCP endpoint
-- List, filter, and launch third-party Android packages
-- Mirror and control the selected device via scrcpy
-- Capture PNG screenshots
-- Push a local file into the Android Download folder
+## Recommended: Flutter desktop client v0.4
 
-**Important:** The current "Open app window" button launches the selected app and opens a *whole-device mirror*, not a separately rendered virtual-display app window. True per-app multi-window, audio routing, gaming profiles, notification synchronization, and reconnect automation are planned but not implemented.
+See **[flutter_hub/README.md](flutter_hub/README.md)** for Windows prerequisites, build commands, and the detailed feature list.
 
-## Requirements
-- Windows 10 or 11
-- Python 3.10+ with Tkinter
-- [Android SDK Platform Tools (ADB)](https://developer.android.com/tools/releases/platform-tools) installed and added to PATH
-- [scrcpy](https://github.com/Genymobile/scrcpy) installed and added to PATH
-- Android device with Developer options and USB debugging enabled
+### Your personalized workspaces
+- **Sales Desk:** Data-to-decision workspace
+- **X Academy:** Learn. Analyse. Lead.
+- **Build Lab:** Developer workspace
 
-## Run
-From the repository root:
+The Flutter client offers virtual Android app windows, an in-app taskbar, an App Drawer with local favorites, multiple monitor detection, window placement and persistence, and one-click layout restore.
 
-~~~powershell
-python .\open-source\desktop_hub.py
-~~~
+Its existing dark/teal interface is retained. App window rendering is performed by scrcpy, while ADB handles Android commands. Actual compatibility on a Galaxy A56, especially multiple virtual displays and Windows multi-monitor positioning, requires hardware testing.
 
-1. On the phone, enable **Developer options → USB debugging**.
-2. Connect by USB and approve the authorization prompt.
-3. Press **Refresh** and select the device.
-4. Press **Load Apps**, select a package, then **Launch selected app** or **Open app window**.
-5. Press **Mirror Screen** to interact with the device using mouse and keyboard.
+## Legacy Python prototype
 
-### Wi-Fi
-The Wi-Fi field connects to an **already enabled** ADB-over-TCP IP:port endpoint. Android 11+ wireless debugging pairing is **not implemented** in this MVP. You may use USB for the initial setup. Do not expose ADB ports to the public internet.
+`desktop_hub.py` is the older experimental Python/Tkinter application. **New development should use `flutter_hub`**, not the Python prototype.
 
-## Security
-- All ADB commands use Python subprocess argument arrays, not shell string interpolation.
-- Package identifiers and wireless connection addresses are validated.
-- Commands are sent only to a selected authorized connected device.
-- Do not enable USB debugging on untrusted PCs.
-- Network traffic is not encrypted merely because ADB is used; follow Android's pairing and network guidance.
+## Licensing
 
-## Open-source boundaries
-All original code in this folder is licensed under the MIT license in [LICENSE](LICENSE). This license **does not apply** to other files in the repository, including the existing proprietary Android DEX materials. The source history of this fork still contains those materials; for a clean independent distribution, move this folder into a fresh repository with its own history and branding.
+Original files in this directory and its Flutter subdirectory are MIT licensed. The parent GitHub repository is still a fork carrying proprietary Android DEX materials under a different license. The entire fork cannot be relicensed as MIT. Publish the original open-source folder to a separate fresh repository when preparing a clean public distribution.
 
-External ADB and scrcpy binaries are **not bundled** here. Their original licenses remain in force.
+## Verification
 
-## Roadmap
-1. App icons and friendly app names; improved device diagnostics
-2. Persisted profiles and window layouts
-3. Android 11+ wireless debugging pairing, reconnection
-4. Per-app virtual displays where Android supports them, without implying universal compatibility
-5. Optional Android companion for notifications and media data, with explicit permission controls
+Flutter Windows analysis, unit tests and compilation are configured in the repository workflow. A successful CI result and real-device test have not yet been verified in this chat.
