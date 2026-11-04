@@ -28,6 +28,12 @@ jobs:
           cache: true
       - name: Generate Windows runner
         run: flutter create --platforms=windows --project-name basel_desktop_hub .
+      - name: Remove generated sample test
+        shell: pwsh
+        run: |
+          if (-not (git ls-files -- test/widget_test.dart)) {
+            Remove-Item test/widget_test.dart -ErrorAction SilentlyContinue
+          }
       - name: Dependencies
         run: flutter pub get
       - name: Static analysis
