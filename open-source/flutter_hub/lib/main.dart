@@ -1,0 +1,330 @@
+import 'package:flutter/material.dart';
+import 'android_bridge.dart';
+
+void main() => runApp(const BaselDesktopHub());
+
+const accent = Color(0xFF099999);
+const bg = Color(0xFF0B1619);
+const surface = Color(0xFF14272B);
+const muted = Color(0xFF95ABAF);
+
+class BaselDesktopHub extends StatelessWidget {
+  const BaselDesktopHub({super.key});
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    title: 'Basel Desktop Hub',
+    debugShowCheckedModeBanner: false,
+    theme: ThemeData(
+      useMaterial3: true, brightness: Brightness.dark,
+      scaffoldBackgroundColor: bg,
+      colorScheme: const ColorScheme.dark(primary: accent, surface: surface),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true, fillColor: const Color(0xFF1B3438),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+      ),
+    ),
+    home: const Dashboard(),
+  );
+}
+
+class Dashboard extends StatefulWidget {
+  const Dashboard({super.key});
+  @override
+  State<Dashboard> createState() => _DashboardState();
+}
+
+class _DashboardState extends State<Dashboard> {
+  final bridge = AndroidBridge();
+  final query = TextEditingController();
+  final wifi = TextEditingController();
+  final file = TextEditingController();
+  List<String> devices = [];
+  List<String> apps = [];
+  String? selected;
+  String battery = '?';
+  String message = 'Connect an Android device with USB debugging enabled';
+  int tab = 0;
+  bool busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    query.addListener(() => setState(() {}));
+    refresh();
+  }
+
+  @override
+  void dispose() {
+    query.dispose();
+    wifi.dispose();
+    file.dispose();
+    super.dispose();
+  }
+
+  Future<void> execute(Future<void> Function() operation, {String? success}) async {
+    if (busy) return;
+    setState(() => busy = true);
+    try {
+      await operation();
+      if (mounted && success != null) setState(() => message = success);
+    } catch (e) {
+      if (mounted) setState(() => message = 'Error: ' + e.toString());
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> refresh() => execute(() async {
+    final found = await bridge.devices();
+    final serial = found.contains(selected) ? selected : (found.isEmpty ? null : found.first);
+    String level = '?';
+    if (serial != null) {
+      try { level = await bridge.battery(serial); } catch (_) {}
+    }
+    if (mounted) setState(() {
+      devices = found;
+      if (selected != serial) apps = [];
+      selected = serial;
+      battery = level;
+      message = serial == null ? 'No authorized device detected' : 'Device connected: ' + serial;
+    });
+  });
+
+  Future<void> loadApps() => execute(() async {
+    if (selected == null) throw StateError('Connect a device first');
+    final installed = await bridge.packages(selected!);
+    if (mounted) setState(() { apps = installed; tab = 1; });
+  }, success: 'Application list refreshed');
+
+  Future<void> launch(String pkg, {bool mirror = false}) => execute(() async {
+    if (selected == null) throw StateError('No selected device');
+    await bridge.launch(selected!, pkg);
+    if (mirror) await bridge.mirror(selected!);
+  }, success: mirror ? 'App launched; whole-device mirror opened'
+      : 'Launch requested: ' + pkg);
+
+  Future<void> mirror() => execute(() async {
+    if (selected == null) throw StateError('No selected device');
+    await bridge.mirror(selected!);
+  }, success: 'Mirror opened in scrcpy');
+
+  Future<void> screenshot() => execute(() async {
+    if (selected == null) throw StateError('No selected device');
+    final path = await bridge.screenshot(selected!);
+    if (mounted) setState(() => message = 'Screenshot saved: ' + path);
+  });
+
+  Widget button(String label, IconData icon, VoidCallback onPressed, {bool secondary = false}) {
+    return secondary
+        ? OutlinedButton.icon(onPressed: busy ? null : onPressed,
+            icon: Icon(icon), label: Text(label))
+        : FilledButton.icon(onPressed: busy ? null : onPressed,
+            icon: Icon(icon), label: Text(label));
+  }
+
+  Widget card(Widget child) => Container(
+    padding: const EdgeInsets.all(22),
+    decoration: BoxDecoration(
+      color: surface, borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: const Color(0xFF244146))),
+    child: child,
+  );
+
+  Widget title(String headline, String subtitle) => Padding(
+    padding: const EdgeInsets.only(bottom: 23),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(headline, style: const TextStyle(fontSize: 29, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 6),
+      Text(subtitle, style: const TextStyle(color: muted)),
+    ]),
+  );
+
+  Widget overview() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    title('Your Android workspace', 'Work with your mobile apps directly on Windows'),
+    card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Row(children: [
+        Icon(Icons.smartphone, color: accent, size: 27),
+        SizedBox(width: 10),
+        Text('Device connection', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+      ]),
+      const SizedBox(height: 23),
+      Row(children: [
+        Expanded(child: DropdownButtonFormField<String>(
+          key: ValueKey(selected),
+          initialValue: selected,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'Authorized device'),
+          items: devices.map((d) => DropdownMenuItem(
+            value: d, child: Text(d, overflow: TextOverflow.ellipsis))).toList(),
+          onChanged: (value) => setState(() { selected = value; apps = []; }),
+        )),
+        const SizedBox(width: 12),
+        button('Refresh', Icons.refresh, refresh, secondary: true),
+      ]),
+      const SizedBox(height: 16),
+      Text('Battery level: ' + battery + '%',
+          style: const TextStyle(color: muted)),
+      const SizedBox(height: 18),
+      Wrap(spacing: 10, runSpacing: 10, children: [
+        button('Mirror device', Icons.cast, mirror),
+        button('Installed apps', Icons.apps, loadApps, secondary: true),
+        button('Screenshot', Icons.camera_alt_outlined, screenshot, secondary: true),
+      ]),
+    ])),
+    const SizedBox(height: 19),
+    card(const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('LOCAL FIRST', style: TextStyle(color: accent, letterSpacing: 1.3)),
+      SizedBox(height: 10),
+      Text('USB or Wi-Fi ADB. Screen mirroring is handled by scrcpy.'),
+      SizedBox(height: 8),
+      Text('App-specific virtual displays and per-app audio are not implemented yet.',
+          style: TextStyle(color: muted)),
+    ])),
+  ]);
+
+  Widget appList() {
+    final shown = apps.where((p) =>
+      p.toLowerCase().contains(query.text.toLowerCase().trim())).toList();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      title('Applications', 'Open user-installed Android apps from Windows'),
+      Row(children: [
+        Expanded(child: TextField(controller: query,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search), hintText: 'Search Android package'))),
+        const SizedBox(width: 12),
+        button('Load Apps', Icons.refresh, loadApps, secondary: true),
+      ]),
+      const SizedBox(height: 15),
+      Text(shown.length.toString() + ' applications',
+        style: const TextStyle(color: muted)),
+      const SizedBox(height: 9),
+      Expanded(child: card(ListView.separated(
+        itemCount: shown.length,
+        separatorBuilder: (_, __) => const Divider(color: Color(0xFF284348)),
+        itemBuilder: (context, index) {
+          final pkg = shown[index];
+          return ListTile(
+            leading: const Icon(Icons.android, color: accent),
+            title: Text(pkg, maxLines: 1, overflow: TextOverflow.ellipsis),
+            trailing: Wrap(spacing: 6, children: [
+              IconButton(tooltip: 'Launch', onPressed: busy ? null : () => launch(pkg),
+                  icon: const Icon(Icons.play_arrow)),
+              IconButton(tooltip: 'Launch and mirror whole device',
+                  onPressed: busy ? null : () => launch(pkg, mirror: true),
+                  icon: const Icon(Icons.open_in_new)),
+            ]),
+          );
+        },
+      ))),
+      const Padding(padding: EdgeInsets.only(top: 8),
+          child: Text('Current mirror windows display the whole phone, not independent apps.',
+              style: TextStyle(color: muted, fontSize: 12))),
+    ]);
+  }
+
+  Widget tools() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    title('Device tools', 'ADB utilities for your authorized Android phone'),
+    card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('Connect an existing Wi-Fi ADB endpoint',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 13),
+      Row(children: [
+        Expanded(child: TextField(controller: wifi,
+          decoration: const InputDecoration(hintText: '192.168.1.10:5555'))),
+        const SizedBox(width: 12),
+        button('Connect', Icons.wifi, () => execute(() async {
+          await bridge.connectWifi(wifi.text.trim());
+          final found = await bridge.devices();
+          if (mounted) setState(() {
+            devices = found;
+            selected = found.isEmpty ? null : found.last;
+          });
+        }, success: 'ADB connection requested'), secondary: true),
+      ]),
+      const SizedBox(height: 12),
+      const Text('Wireless Debugging pairing is not included in this version.',
+        style: TextStyle(color: muted)),
+    ])),
+    const SizedBox(height: 16),
+    card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('Transfer local file into Android Downloads',
+          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 13),
+      TextField(controller: file,
+          decoration: const InputDecoration(hintText: 'Absolute Windows file path')),
+      const SizedBox(height: 13),
+      button('Send File', Icons.upload_file, () => execute(() async {
+        if (selected == null) throw StateError('No selected device');
+        await bridge.pushFile(selected!, file.text.trim());
+      }, success: 'File transferred to Android Downloads')),
+    ])),
+    const SizedBox(height: 16),
+    card(Wrap(spacing: 12, runSpacing: 10, children: [
+      button('Home', Icons.home_outlined, () => key(3), secondary: true),
+      button('Back', Icons.arrow_back, () => key(4), secondary: true),
+      button('Recents', Icons.crop_square, () => key(187), secondary: true),
+      button('Power', Icons.power_settings_new, () => key(26), secondary: true),
+    ])),
+  ]);
+
+  void key(int code) => execute(() async {
+    if (selected == null) throw StateError('No selected device');
+    await bridge.key(selected!, code);
+  }, success: 'Device command sent');
+
+  Widget nav(int index, IconData icon, String label) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: ListTile(
+      selected: tab == index, selectedTileColor: accent.withAlpha(36),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      leading: Icon(icon, color: tab == index ? accent : muted),
+      title: Text(label, style: TextStyle(color: tab == index ? Colors.white : muted)),
+      onTap: () => setState(() => tab = index),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Row(children: [
+      Container(width: 245, padding: const EdgeInsets.fromLTRB(18, 27, 18, 20),
+        color: const Color(0xFF102024),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Row(children: [
+            Icon(Icons.hub_outlined, size: 29, color: accent),
+            SizedBox(width: 9),
+            Text('BASEL HUB', style: TextStyle(
+              fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1)),
+          ]),
+          const SizedBox(height: 8),
+          const Text('Android desktop workspace',
+            style: TextStyle(color: muted, fontSize: 11)),
+          const SizedBox(height: 42),
+          nav(0, Icons.dashboard_outlined, 'Overview'),
+          nav(1, Icons.apps, 'Applications'),
+          nav(2, Icons.tune, 'Device Tools'),
+          const Spacer(),
+          const Text('OPEN SOURCE  ·  v0.2',
+            style: TextStyle(color: muted, fontSize: 11)),
+        ])),
+      Expanded(child: Padding(
+        padding: const EdgeInsets.fromLTRB(30, 30, 30, 22),
+        child: Column(children: [
+          Expanded(child: tab == 1 ? appList() :
+            SingleChildScrollView(child: tab == 0 ? overview() : tools())),
+          const SizedBox(height: 13),
+          Row(children: [
+            if (busy) const Padding(padding: EdgeInsets.only(right: 10),
+              child: SizedBox(width: 14, height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2))),
+            const Icon(Icons.info_outline, color: muted, size: 16),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message, maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: muted, fontSize: 12))),
+          ]),
+        ]),
+      )),
+    ]),
+  );
+}
