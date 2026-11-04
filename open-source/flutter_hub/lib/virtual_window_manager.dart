@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'desktop_layout.dart';
 
 enum WindowStatus { starting, running, failed, closed }
 
@@ -12,6 +13,7 @@ class AppWindow {
   WindowStatus status = WindowStatus.starting;
   String diagnostic = '';
   Process? process;
+  DesktopBounds? placement;
 }
 
 class VirtualWindowManager {
@@ -40,6 +42,7 @@ class VirtualWindowManager {
     required String package,
     int width = 1280,
     int height = 800,
+    DesktopBounds? placement,
   }) async {
     if (!RegExp(r'^[a-zA-Z_][a-zA-Z0-9_.]*$').hasMatch(package)) {
       throw const FormatException('Invalid Android package');
@@ -51,6 +54,7 @@ class VirtualWindowManager {
       throw StateError('Update scrcpy to a version supporting --new-display and --start-app.');
     }
     final window = AppWindow(_nextId++, serial, package);
+    window.placement = placement;
     windows.add(window);
     _notify();
     final args = [
@@ -58,6 +62,12 @@ class VirtualWindowManager {
       '--new-display=' + width.toString() + 'x' + height.toString(),
       '--start-app=' + package,
       '--window-title=Basel Hub | ' + package,
+      if (placement != null) ...[
+        '--window-x=' + placement.x.toString(),
+        '--window-y=' + placement.y.toString(),
+        '--window-width=' + placement.width.toString(),
+        '--window-height=' + placement.height.toString(),
+      ],
     ];
     try {
       final process = await Process.start('scrcpy', args, runInShell: false);
@@ -100,6 +110,32 @@ class VirtualWindowManager {
       _notify();
       rethrow;
     }
+  }
+
+  Future<DesktopBounds> actualBounds(AppWindow window) async {
+    final pid = window.process?.pid;
+    if (pid == null || window.status != WindowStatus.running) {
+      throw StateError('Window is not running');
+    }
+    return DesktopWindowControl.readBounds(pid);
+  }
+
+  Future<void> place(AppWindow window, DesktopBounds bounds) async {
+    final pid = window.process?.pid;
+    if (pid == null || window.status != WindowStatus.running) {
+      throw StateError('Window is not running');
+    }
+    await DesktopWindowControl.move(pid, bounds);
+    window.placement = bounds;
+    _notify();
+  }
+
+  Future<void> focus(AppWindow window) async {
+    final pid = window.process?.pid;
+    if (pid == null || window.status != WindowStatus.running) {
+      throw StateError('Window is not running');
+    }
+    await DesktopWindowControl.focus(pid);
   }
 
   void close(int id) {
